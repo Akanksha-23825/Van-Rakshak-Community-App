@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+// 1. Import the speech library
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import './App.css';
 import IncidentReportForm from './components/IncidentReportForm';
 import AlertList from './components/AlertList';
@@ -8,17 +10,7 @@ import LoginForm from './components/LoginForm';
 function App() {
   const [activeTab, setActiveTab] = useState('login');
   const [currentUser, setCurrentUser] = useState(null);
-  useEffect(() => {
-    const saved = localStorage.getItem('vanrakshak_incidents');
-    if (saved) {
-      setIncidents(JSON.parse(saved));
-    }
-  }, []);
-
-  // Save to localStorage whenever incidents change
-  useEffect(() => {
-    localStorage.setItem('vanrakshak_incidents', JSON.stringify(incidents));
-  }, [incidents]);
+  const [selectedIncident, setSelectedIncident] = useState(null);
   const [incidents, setIncidents] = useState([
     {
       id: 1,
@@ -26,26 +18,33 @@ function App() {
       incidentType: 'fire',
       description: 'Large forest fire spreading rapidly near the village',
       distance: '2.3 km away',
-      timestamp: new Date(Date.now() - 600000).toISOString(), // 10 mins ago
+      timestamp: new Date(Date.now() - 600000).toISOString(),
       severity: 'high',
       location: { latitude: 12.9716, longitude: 77.5946, area: 'Bannerghatta Forest Range' },
       image: 'https://images.unsplash.com/photo-1525107226105-bd46b0c92f11?w=400',
       reporter: { name: 'Ravi Kumar', phone: '9876543210', village: 'Hosur Village' }
-    },
-    {
-      id: 2,
-      type: 'wildlife',
-      incidentType: 'wildlife',
-      description: 'Elephant herd (approx 8-10 elephants) moving towards village area',
-      distance: '5.1 km away',
-      timestamp: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-      severity: 'medium',
-      location: { latitude: 12.9516, longitude: 77.5846, area: 'Kaggalipura Forest Section' },
-      image: 'https://images.unsplash.com/photo-1564760055775-d63b17a55c44?w=400',
-      reporter: { name: 'Lakshmi Devi', phone: '9123456789', village: 'Kaggalipura' }
     }
   ]);
-  const [selectedIncident, setSelectedIncident] = useState(null);
+
+  // 2. Initialize Speech Recognition Hook
+  const {
+    transcript,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition
+  } = useSpeechRecognition();
+
+  useEffect(() => {
+    const saved = localStorage.getItem('vanrakshak_incidents');
+    if (saved) {
+      setIncidents(JSON.parse(saved));
+    }
+  }, []);
+
+  // Save to localStorage when incidents change
+  useEffect(() => {
+    localStorage.setItem('vanrakshak_incidents', JSON.stringify(incidents));
+  }, [incidents]);
 
   const addIncident = (newIncident) => {
     const incident = {
@@ -56,7 +55,6 @@ function App() {
       severity: newIncident.incidentType === 'fire' ? 'high' : 'medium',
       reporter: currentUser
     };
-    
     setIncidents([incident, ...incidents]);
     setActiveTab('alerts');
   };
@@ -67,8 +65,7 @@ function App() {
   };
 
   const handleLogout = () => {
-    const confirmLogout = window.confirm('Are you sure you want to logout?');
-    if (confirmLogout) {
+    if (window.confirm('Are you sure you want to logout?')) {
       setCurrentUser(null);
       setActiveTab('login');
     }
@@ -87,43 +84,47 @@ function App() {
             <p>Community Forest Protection</p>
           </div>
           <div className="user-info">
+            {/* 3. Added Speech Control UI */}
+            <div className="speech-controls" style={{ marginRight: '15px', textAlign: 'right' }}>
+              {!browserSupportsSpeechRecognition ? (
+                <small style={{ color: 'gray' }}>Mic not supported</small>
+              ) : (
+                <>
+                  <button 
+                    onClick={listening ? SpeechRecognition.stopListening : () => SpeechRecognition.startListening({ continuous: true })}
+                    style={{ backgroundColor: listening ? '#ff4d4d' : '#4CAF50', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}
+                  >
+                    {listening ? '🛑 Stop Mic' : '🎤 Start Mic'}
+                  </button>
+                  {transcript && <p style={{ fontSize: '10px', margin: '5px 0' }}>Listening: "{transcript.substring(0, 20)}..."</p>}
+                </>
+              )}
+            </div>
             <p className="user-name">👤 {currentUser.name}</p>
-            <p className="user-village">📍 {currentUser.village}</p>
-            <button className="logout-btn" onClick={handleLogout}>
-              🚪 Logout
-            </button>
+            <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
           </div>
         </div>
       </header>
 
       <nav className="tab-navigation">
-        <button 
-          className={activeTab === 'report' ? 'active' : ''}
-          onClick={() => setActiveTab('report')}
-        >
+        <button className={activeTab === 'report' ? 'active' : ''} onClick={() => setActiveTab('report')}>
           📝 Report Incident
         </button>
-        <button 
-          className={activeTab === 'alerts' ? 'active' : ''}
-          onClick={() => setActiveTab('alerts')}
-        >
+        <button className={activeTab === 'alerts' ? 'active' : ''} onClick={() => setActiveTab('alerts')}>
           🔔 View Alerts ({incidents.length})
         </button>
       </nav>
 
       <main className="main-content">
         {activeTab === 'report' ? (
-          <IncidentReportForm onSubmit={addIncident} />
+          <IncidentReportForm onSubmit={addIncident} voiceTranscript={transcript} />
         ) : (
           <AlertList alerts={incidents} onSelectAlert={setSelectedIncident} />
         )}
       </main>
 
       {selectedIncident && (
-        <AlertDetailModal 
-          incident={selectedIncident} 
-          onClose={() => setSelectedIncident(null)} 
-        />
+        <AlertDetailModal incident={selectedIncident} onClose={() => setSelectedIncident(null)} />
       )}
 
       <footer className="app-footer">

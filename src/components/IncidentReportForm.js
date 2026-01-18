@@ -1,13 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { submitIncident } from '../services/api'; 
+import { submitIncident } from '../services/api';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-function IncidentReportForm({ onSubmit }) {
-  const { register, handleSubmit, formState: { errors }, reset } = useForm();
+const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({
+  model: "gemini-2.5-flash-lite",
+  systemInstruction: "You are a forest protection assistant. The user may speak in Kannada, Hindi, or English. Analyze spoken reports and return ONLY valid JSON with 'incidentType' (fire, wildlife, illegal, or other) and 'description'."
+});
+
+function IncidentReportForm({ onSubmit, voiceTranscript }) {
+  const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm();
   const [location, setLocation] = useState(null);
   const [locationName, setLocationName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
+
+  useEffect(() => {
+    const handleVoiceParsing = async () => {
+      if (voiceTranscript && voiceTranscript.length > 15 && !isAiProcessing) {
+        setIsAiProcessing(true);
+        try {
+          const prompt = `Convert this spoken report into structured JSON: "${voiceTranscript}"`;
+          const result = await model.generateContent(prompt);
+          const text = result.response.text().trim();
+          const jsonMatch = text.match(/\{[\s\S]*\}/s);
+
+          if (jsonMatch && jsonMatch[0]) {
+            const data = JSON.parse(jsonMatch[0]);
+            if (data.incidentType) setValue('incidentType', data.incidentType, { shouldValidate: true });
+            if (data.description) setValue('description', data.description, { shouldValidate: true });
+          }
+        } catch (error) {
+          console.error("Gemini API call failed:", error);
+        } finally {
+          setIsAiProcessing(false);
+        }
+      }
+    };
+    const timeoutId = setTimeout(handleVoiceParsing, 1500);
+    return () => clearTimeout(timeoutId);
+  }, [voiceTranscript, setValue, isAiProcessing]);
 
   const getLocation = () => {
     if (navigator.geolocation) {
@@ -15,27 +49,19 @@ function IncidentReportForm({ onSubmit }) {
         async (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          
           setLocation({ latitude: lat, longitude: lng });
-          
-          // Try to get area name using reverse geocoding
           try {
-            const response = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
-            );
+            const response = await fetch(`https://nominatim.openstreetmap.org{lat}&lon=${lng}&format=json`);
             const data = await response.json();
-            const areaName = data.address.suburb || data.address.village || 
-                           data.address.town || data.address.state_district || 
-                           data.address.state || 'Unknown Area';
+            const areaName = data.address.suburb || data.address.village || data.address.town || 'Unknown Area';
             setLocationName(areaName);
-            alert(`Location captured: ${areaName}`);
           } catch (error) {
             setLocationName('Location captured');
-            alert('Location captured successfully!');
           }
         },
         (error) => {
-          alert('Unable to get location. Please enable GPS.');
+          console.error(`Geolocation Error: Code ${error.code}: ${error.message}`);
+          alert("Unable to get location. Ensure GPS is enabled and browser permission is granted.");
         }
       );
     } else {
@@ -52,88 +78,46 @@ function IncidentReportForm({ onSubmit }) {
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
+      reader.onloadend = () => setImagePreview(reader.result);
       reader.readAsDataURL(file);
     }
   };
 
   const handleFormSubmit = async (data) => {
-    if (!location) {
-      alert('Please capture location first!');
-      return;
-    }
-    
-    if (!imagePreview) {
-      alert('Please upload an image of the incident!');
-      return;
-    }
-
+    if (!location || !imagePreview) return;
     setIsSubmitting(true);
 
     const reportData = {
-      type: data.incidentType,
-      description: data.description,
-      location: { 
-        ...location, 
-        area: locationName || 'Unknown Area'
-      },
-      image: imagePreview,
-      incidentType: data.incidentType
+      type: data.incidentType, description: data.description,
+      location: { ...location, area: locationName || 'Unknown Area' },
+      image: imagePreview, incidentType: data.incidentType, timestamp: new Date().toISOString(),
     };
 
+    try { await submitIncident(reportData); console.log('✅ Sent to backend successfully!'); } 
+    catch (error) { console.log('⚠️ Backend not connected yet, data saved locally only'); }
+
     onSubmit(reportData);
-
+    
     setTimeout(() => {
-      alert('Incident reported successfully! Check the Alerts tab.');
-      reset();
-      setLocation(null);
-      setLocationName('');
-      setImagePreview(null);
-      setIsSubmitting(false);
+        alert('Incident reported successfully! Check the Alerts tab.');
+        reset(); setLocation(null); setLocationName(''); setImagePreview(null); setIsSubmitting(false);
     }, 500);
-
-    const handleFormSubmit = async (data) => {
-  // ... validation code ...
-
-  setIsSubmitting(true);
-
-  const reportData = {
-    type: data.incidentType,
-    description: data.description,
-    location: { ...location, area: locationName || 'Unknown Area' },
-    image: imagePreview,
-    incidentType: data.incidentType,
-    timestamp: new Date().toISOString(),
-  };
-
-  try {
-    // TRY to send to backend
-    await submitIncident(reportData);
-    console.log('✅ Sent to backend successfully!');
-  } catch (error) {
-    // If backend not ready, just log it
-    console.log('⚠️ Backend not connected yet, data saved locally only');
-  }
-
-  // Always update local state (so app works even without backend)
-  onSubmit(reportData);
-  
-  alert('Incident reported successfully!');
-  // ... rest of code ...
-};
   };
 
   return (
     <div className="form-container">
       <h2>Report Forest Incident</h2>
       
+      {isAiProcessing && (
+        <div className="ai-status">
+          <p>✨ AI is organizing your spoken report...</p>
+        </div>
+      )}
+
       <div className="incident-form">
-        
         <div className="form-group">
           <label>Incident Type *</label>
-          <select {...register('incidentType', { required: true })}>
+          <select {...register('incidentType', { required: true })} id="incidentType">
             <option value="">Select type...</option>
             <option value="fire">🔥 Forest Fire</option>
             <option value="wildlife">🐘 Wildlife Sighting</option>
@@ -147,47 +131,23 @@ function IncidentReportForm({ onSubmit }) {
           <label>Detailed Description *</label>
           <textarea 
             {...register('description', { required: true, minLength: 20 })}
-            placeholder="Describe what you observed in detail (minimum 20 characters)..."
+            placeholder="You can type or use the microphone above..."
             rows="5"
           />
-          {errors.description && <span className="error">Please provide at least 20 characters</span>}
+          {errors.description && <span className="error">Minimum 20 characters required</span>}
         </div>
-
+        
         <div className="form-group">
-          <label>Upload Photo * (Required)</label>
-          <input 
-            type="file" 
-            accept="image/*"
-            capture="environment"
-            onChange={handleImageChange}
-            required
-          />
-          {imagePreview ? (
-            <div className="image-preview">
-              <img src={imagePreview} alt="Preview" />
-              <p className="success-text">✓ Image uploaded successfully</p>
-            </div>
-          ) : (
-            <div className="warning-box">
-              <span>⚠️</span>
-              <p>Photo is mandatory for incident verification</p>
-            </div>
-          )}
+          <label>Upload Photo *</label>
+          <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} required />
+          {imagePreview && <div className="image-preview"><img src={imagePreview} alt="Preview" /></div>}
         </div>
 
         <div className="form-group">
           <label>📍 Location *</label>
           <button type="button" onClick={getLocation} className="btn-location">
-            {location ? `📍 Location: ${locationName || 'Captured'}` : '📍 Capture My Location'}
+            {location ? `📍 ${locationName}` : '📍 Capture My Location'}
           </button>
-          {location && (
-            <div className="location-info">
-              <p style={{fontWeight: 600}}>{locationName}</p>
-              <p style={{fontSize: '12px', marginTop: '5px'}}>
-                Coordinates: {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
-              </p>
-            </div>
-          )}
         </div>
 
         <button 
@@ -197,14 +157,6 @@ function IncidentReportForm({ onSubmit }) {
         >
           {isSubmitting ? 'Submitting...' : '✓ Submit Report'}
         </button>
-
-        {(!imagePreview || !location) && (
-          <p style={{textAlign: 'center', color: '#999', fontSize: '14px'}}>
-            {!imagePreview && !location && '⚠️ Please upload photo and capture location to submit'}
-            {!imagePreview && location && '⚠️ Please upload photo to submit'}
-            {imagePreview && !location && '⚠️ Please capture location to submit'}
-          </p>
-        )}
       </div>
     </div>
   );
