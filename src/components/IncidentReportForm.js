@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next'; // Added for translation
 import { submitIncident } from '../services/api';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -10,13 +11,21 @@ const model = genAI.getGenerativeModel({
 });
 
 function IncidentReportForm({ onSubmit, voiceTranscript }) {
+  const { t, i18n } = useTranslation(); // Hook for translations
   const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm();
+  
   const [location, setLocation] = useState(null);
   const [locationName, setLocationName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
 
+  // Language change handler
+  const changeLanguage = (e) => {
+    i18n.changeLanguage(e.target.value);
+  };
+
+  // Voice recording logic (remains unchanged for accessibility)
   useEffect(() => {
     const handleVoiceParsing = async () => {
       if (voiceTranscript && voiceTranscript.length > 15 && !isAiProcessing) {
@@ -51,32 +60,22 @@ function IncidentReportForm({ onSubmit, voiceTranscript }) {
           const lng = position.coords.longitude;
           setLocation({ latitude: lat, longitude: lng });
           try {
-            const response = await fetch(`https://nominatim.openstreetmap.org{lat}&lon=${lng}&format=json`);
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
             const data = await response.json();
             const areaName = data.address.suburb || data.address.village || data.address.town || 'Unknown Area';
             setLocationName(areaName);
           } catch (error) {
-            setLocationName('Location captured');
+            setLocationName(t('report.locationCaptured'));
           }
         },
-        (error) => {
-          console.error(`Geolocation Error: Code ${error.code}: ${error.message}`);
-          alert("Unable to get location. Ensure GPS is enabled and browser permission is granted.");
-        }
+        () => alert(t('report.captureLocationFirst'))
       );
-    } else {
-      alert('Geolocation is not supported by your browser.');
     }
   };
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size should be less than 5MB');
-        e.target.value = '';
-        return;
-      }
       const reader = new FileReader();
       reader.onloadend = () => setImagePreview(reader.result);
       reader.readAsDataURL(file);
@@ -84,78 +83,86 @@ function IncidentReportForm({ onSubmit, voiceTranscript }) {
   };
 
   const handleFormSubmit = async (data) => {
-    if (!location || !imagePreview) return;
+    if (!location || !imagePreview) {
+      if (!imagePreview) alert(t('report.uploadImage'));
+      if (!location) alert(t('report.captureLocationFirst'));
+      return;
+    }
     setIsSubmitting(true);
 
     const reportData = {
-      type: data.incidentType, description: data.description,
+      type: data.incidentType,
+      description: data.description,
       location: { ...location, area: locationName || 'Unknown Area' },
-      image: imagePreview, incidentType: data.incidentType, timestamp: new Date().toISOString(),
+      image: imagePreview,
+      timestamp: new Date().toISOString(),
     };
 
-    try { await submitIncident(reportData); console.log('✅ Sent to backend successfully!'); } 
-    catch (error) { console.log('⚠️ Backend not connected yet, data saved locally only'); }
+    try { await submitIncident(reportData); } catch (error) { console.log('API Error'); }
 
     onSubmit(reportData);
-    
-    setTimeout(() => {
-        alert('Incident reported successfully! Check the Alerts tab.');
-        reset(); setLocation(null); setLocationName(''); setImagePreview(null); setIsSubmitting(false);
-    }, 500);
+    alert(t('report.success'));
+    reset(); setLocation(null); setLocationName(''); setImagePreview(null); setIsSubmitting(false);
   };
 
   return (
     <div className="form-container">
-      <h2>Report Forest Incident</h2>
+      {/* Language Dropdown Selector */}
+      <div className="language-selector" style={{ textAlign: 'right', marginBottom: '15px' }}>
+        <select onChange={changeLanguage} value={i18n.language}>
+          <option value="en">English</option>
+          <option value="hi">हिन्दी (Hindi)</option>
+          <option value="kn">ಕನ್ನಡ (Kannada)</option>
+          <option value="ta">தமிழ் (Tamil)</option>
+        </select>
+      </div>
+
+      <h2>{t('report.title')}</h2>
       
       {isAiProcessing && (
         <div className="ai-status">
-          <p>✨ AI is organizing your spoken report...</p>
+          <p>✨ {t('report.aiProcessing')}</p>
         </div>
       )}
 
       <div className="incident-form">
         <div className="form-group">
-          <label>Incident Type *</label>
-          <select {...register('incidentType', { required: true })} id="incidentType">
-            <option value="">Select type...</option>
-            <option value="fire">🔥 Forest Fire</option>
-            <option value="wildlife">🐘 Wildlife Sighting</option>
-            <option value="illegal">⚠️ Illegal Activity (Logging/Poaching)</option>
-            <option value="other">📌 Other Emergency</option>
+          <label>{t('report.type')} *</label>
+          <select {...register('incidentType', { required: true })}>
+            <option value="">{t('report.typePlaceholder')}</option>
+            <option value="fire">🔥 {t('report.fire')}</option>
+            <option value="wildlife">🐘 {t('report.wildlife')}</option>
+            <option value="illegal">⚠️ {t('report.illegal')}</option>
+            <option value="other">📌 {t('report.other')}</option>
           </select>
-          {errors.incidentType && <span className="error">Please select incident type</span>}
+          {errors.incidentType && <span className="error">{t('report.selectType')}</span>}
         </div>
 
         <div className="form-group">
-          <label>Detailed Description *</label>
+          <label>{t('report.description')} *</label>
           <textarea 
             {...register('description', { required: true, minLength: 20 })}
-            placeholder="You can type or use the microphone above..."
+            placeholder={t('report.descriptionPlaceholder')}
             rows="5"
           />
-          {errors.description && <span className="error">Minimum 20 characters required</span>}
+          {errors.description && <span className="error">{t('report.minDescription')}</span>}
         </div>
         
         <div className="form-group">
-          <label>Upload Photo *</label>
-          <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} required />
+          <label>{t('report.uploadPhoto')} *</label>
+          <input type="file" accept="image/*" onChange={handleImageChange} required />
           {imagePreview && <div className="image-preview"><img src={imagePreview} alt="Preview" /></div>}
         </div>
 
         <div className="form-group">
-          <label>📍 Location *</label>
+          <label>📍 {t('report.location')} *</label>
           <button type="button" onClick={getLocation} className="btn-location">
-            {location ? `📍 ${locationName}` : '📍 Capture My Location'}
+            {location ? `📍 ${locationName}` : `📍 ${t('report.captureLocation')}`}
           </button>
         </div>
 
-        <button 
-          onClick={handleSubmit(handleFormSubmit)}
-          className="btn-submit"
-          disabled={isSubmitting || !imagePreview || !location}
-        >
-          {isSubmitting ? 'Submitting...' : '✓ Submit Report'}
+        <button onClick={handleSubmit(handleFormSubmit)} className="btn-submit" disabled={isSubmitting}>
+          {isSubmitting ? t('report.submitting') : `✓ ${t('report.submit')}`}
         </button>
       </div>
     </div>

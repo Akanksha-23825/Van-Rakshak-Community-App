@@ -1,0 +1,72 @@
+{
+  "login": {
+    "title": "Van Rakshak",
+    "subtitle": "Community Forest Protection Portal",
+    "name": "Your Full Name",
+    "phone": "Mobile Number",
+    "village": "Village/Area Name",
+    "continue": "Continue to Van Rakshak",
+    "info": "Your information helps us contact you for incident follow-up and send alerts specific to your area.",
+    "nameError": "Name is required (min 3 characters)",
+    "phoneError": "Enter valid 10-digit number",
+    "villageError": "Village name is required"
+  },
+  "header": {
+    "title": "Van Rakshak",
+    "subtitle": "Community Forest Protection",
+    "logout": "Logout"
+  },
+  "tabs": {
+    "report": "Report Incident",
+    "alerts": "View Alerts"
+  },
+  "report": {
+    "title": "Report Forest Incident",
+    "aiProcessing": "AI is organizing your spoken report...",
+    "type": "Incident Type",
+    "typePlaceholder": "Select type...",
+    "fire": "Forest Fire",
+    "wildlife": "Wildlife Sighting",
+    "illegal": "Illegal Activity (Logging/Poaching)",
+    "other": "Other Emergency",
+    "description": "Detailed Description",
+    "descriptionPlaceholder": "You can type or use the microphone above...",
+    "minDescription": "Minimum 20 characters required",
+    "uploadPhoto": "Upload Photo",
+    "photoRequired": "Photo is mandatory for incident verification",
+    "photoSuccess": "Image uploaded successfully",
+    "location": "Location",
+    "captureLocation": "Capture My Location",
+    "locationCaptured": "Location:",
+    "submit": "Submit Report",
+    "submitting": "Submitting...",
+    "selectType": "Please select incident type",
+    "uploadImage": "Please upload an image of the incident!",
+    "captureLocationFirst": "Please capture location first!",
+    "success": "Incident reported successfully! Check the Alerts tab."
+  },
+  "alerts": {
+    "title": "Active Alerts",
+    "noAlerts": "No active alerts at the moment",
+    "clickView": "Click to view full details"
+  },
+  "modal": {
+    "title": "Incident Details",
+    "description": "Description",
+    "location": "Location Information",
+    "area": "Area:",
+    "coordinates": "Coordinates:",
+    "distance": "Distance:",
+    "time": "Time Information",
+    "reported": "Reported:",
+    "exactTime": "Exact Time:",
+    "reporter": "Reporter Information",
+    "name": "Name:",
+    "phone": "Phone:",
+    "village": "Village:",
+    "priority": "Priority Level:"
+  },
+  "footer": {
+    "emergency": "Emergency Helpline: 📞 1800-XXX-XXXX | Forest Department"
+  }
+}
