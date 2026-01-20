@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// 1. Import the speech library
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import './App.css';
 import IncidentReportForm from './components/IncidentReportForm';
@@ -11,22 +10,12 @@ function App() {
   const [activeTab, setActiveTab] = useState('login');
   const [currentUser, setCurrentUser] = useState(null);
   const [selectedIncident, setSelectedIncident] = useState(null);
-  const [incidents, setIncidents] = useState([
-    {
-      id: 1,
-      type: 'fire',
-      incidentType: 'fire',
-      description: 'Large forest fire spreading rapidly near the village',
-      distance: '2.3 km away',
-      timestamp: new Date(Date.now() - 600000).toISOString(),
-      severity: 'high',
-      location: { latitude: 12.9716, longitude: 77.5946, area: 'Bannerghatta Forest Range' },
-      image: 'https://images.unsplash.com/photo-1525107226105-bd46b0c92f11?w=400',
-      reporter: { name: 'Ravi Kumar', phone: '9876543210', village: 'Hosur Village' }
-    }
-  ]);
+  
+  const [incidents, setIncidents] = useState(() => {
+    const saved = localStorage.getItem('vanrakshak_incidents');
+    return saved ? JSON.parse(saved) : [];
+  });
 
-  // 2. Initialize Speech Recognition Hook
   const {
     transcript,
     listening,
@@ -34,14 +23,6 @@ function App() {
     browserSupportsSpeechRecognition
   } = useSpeechRecognition();
 
-  useEffect(() => {
-    const saved = localStorage.getItem('vanrakshak_incidents');
-    if (saved) {
-      setIncidents(JSON.parse(saved));
-    }
-  }, []);
-
-  // Save to localStorage when incidents change
   useEffect(() => {
     localStorage.setItem('vanrakshak_incidents', JSON.stringify(incidents));
   }, [incidents]);
@@ -52,10 +33,11 @@ function App() {
       id: Date.now(),
       timestamp: new Date().toISOString(),
       distance: 'Your location',
-      severity: newIncident.incidentType === 'fire' ? 'high' : 'medium',
+      severity: (newIncident.type === 'fire' || newIncident.incidentType === 'fire') ? 'high' : 'medium',
       reporter: currentUser
     };
     setIncidents([incident, ...incidents]);
+    resetTranscript();
     setActiveTab('alerts');
   };
 
@@ -66,7 +48,10 @@ function App() {
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
+      setIncidents([]);
+      localStorage.removeItem('vanrakshak_incidents');
       setCurrentUser(null);
+      resetTranscript();
       setActiveTab('login');
     }
   };
@@ -84,7 +69,6 @@ function App() {
             <p>Community Forest Protection</p>
           </div>
           <div className="user-info">
-            {/* 3. Added Speech Control UI */}
             <div className="speech-controls" style={{ marginRight: '15px', textAlign: 'right' }}>
               {!browserSupportsSpeechRecognition ? (
                 <small style={{ color: 'gray' }}>Mic not supported</small>
@@ -107,12 +91,8 @@ function App() {
       </header>
 
       <nav className="tab-navigation">
-        <button className={activeTab === 'report' ? 'active' : ''} onClick={() => setActiveTab('report')}>
-          📝 Report Incident
-        </button>
-        <button className={activeTab === 'alerts' ? 'active' : ''} onClick={() => setActiveTab('alerts')}>
-          🔔 View Alerts ({incidents.length})
-        </button>
+        <button className={activeTab === 'report' ? 'active' : ''} onClick={() => setActiveTab('report')}>📝 Report Incident</button>
+        <button className={activeTab === 'alerts' ? 'active' : ''} onClick={() => setActiveTab('alerts')}>🔔 View Alerts ({incidents.length})</button>
       </nav>
 
       <main className="main-content">
@@ -123,9 +103,7 @@ function App() {
         )}
       </main>
 
-      {selectedIncident && (
-        <AlertDetailModal incident={selectedIncident} onClose={() => setSelectedIncident(null)} />
-      )}
+      {selectedIncident && <AlertDetailModal incident={selectedIncident} onClose={() => setSelectedIncident(null)} />}
 
       <footer className="app-footer">
         <p>Emergency Helpline: 📞 1800-XXX-XXXX | Forest Department</p>

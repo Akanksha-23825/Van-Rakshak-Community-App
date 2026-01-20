@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useTranslation } from 'react-i18next'; // Added for translation
+import { useTranslation } from 'react-i18next';
 import { submitIncident } from '../services/api';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({
   model: "gemini-2.5-flash-lite",
-  systemInstruction: "You are a forest protection assistant. The user may speak in Kannada, Hindi, or English. Analyze spoken reports and return ONLY valid JSON with 'incidentType' (fire, wildlife, illegal, or other) and 'description'."
+  systemInstruction: "You are a forest protection assistant. Analyze spoken reports. Return ONLY JSON with 'incidentType' and 'description'."
 });
 
 function IncidentReportForm({ onSubmit, voiceTranscript }) {
-  const { t, i18n } = useTranslation(); // Hook for translations
+  const { t, i18n } = useTranslation();
   const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm();
   
   const [location, setLocation] = useState(null);
@@ -20,18 +20,13 @@ function IncidentReportForm({ onSubmit, voiceTranscript }) {
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
 
-  // Language change handler
-  const changeLanguage = (e) => {
-    i18n.changeLanguage(e.target.value);
-  };
-
-  // Voice recording logic (remains unchanged for accessibility)
   useEffect(() => {
     const handleVoiceParsing = async () => {
+      // Logic Fix: model is accessed from the outer scope
       if (voiceTranscript && voiceTranscript.length > 15 && !isAiProcessing) {
         setIsAiProcessing(true);
         try {
-          const prompt = `Convert this spoken report into structured JSON: "${voiceTranscript}"`;
+          const prompt = `Convert this: "${voiceTranscript}" to JSON.`;
           const result = await model.generateContent(prompt);
           const text = result.response.text().trim();
           const jsonMatch = text.match(/\{[\s\S]*\}/s);
@@ -60,7 +55,8 @@ function IncidentReportForm({ onSubmit, voiceTranscript }) {
           const lng = position.coords.longitude;
           setLocation({ latitude: lat, longitude: lng });
           try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+            // Logic Fix: accept-language added for translated names
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=${i18n.language}`);
             const data = await response.json();
             const areaName = data.address.suburb || data.address.village || data.address.town || 'Unknown Area';
             setLocationName(areaName);
@@ -73,21 +69,8 @@ function IncidentReportForm({ onSubmit, voiceTranscript }) {
     }
   };
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setImagePreview(reader.result);
-      reader.readAsDataURL(file);
-    }
-  };
-
   const handleFormSubmit = async (data) => {
-    if (!location || !imagePreview) {
-      if (!imagePreview) alert(t('report.uploadImage'));
-      if (!location) alert(t('report.captureLocationFirst'));
-      return;
-    }
+    if (!location || !imagePreview) return;
     setIsSubmitting(true);
 
     const reportData = {
@@ -96,6 +79,7 @@ function IncidentReportForm({ onSubmit, voiceTranscript }) {
       location: { ...location, area: locationName || 'Unknown Area' },
       image: imagePreview,
       timestamp: new Date().toISOString(),
+      severity: data.incidentType === 'fire' ? 'high' : 'medium'
     };
 
     try { await submitIncident(reportData); } catch (error) { console.log('API Error'); }
@@ -107,23 +91,18 @@ function IncidentReportForm({ onSubmit, voiceTranscript }) {
 
   return (
     <div className="form-container">
-      {/* Language Dropdown Selector */}
       <div className="language-selector" style={{ textAlign: 'right', marginBottom: '15px' }}>
-        <select onChange={changeLanguage} value={i18n.language}>
+        <select onChange={(e) => i18n.changeLanguage(e.target.value)} value={i18n.language}>
           <option value="en">English</option>
-          <option value="hi">हिन्दी (Hindi)</option>
-          <option value="kn">ಕನ್ನಡ (Kannada)</option>
-          <option value="ta">தமிழ் (Tamil)</option>
+          <option value="hi">हिन्दी</option>
+          <option value="kn">ಕನ್ನಡ</option>
+          <option value="ta">தமிழ்</option>
         </select>
       </div>
 
       <h2>{t('report.title')}</h2>
       
-      {isAiProcessing && (
-        <div className="ai-status">
-          <p>✨ {t('report.aiProcessing')}</p>
-        </div>
-      )}
+      {isAiProcessing && <div className="ai-status"><p>✨ {t('report.aiProcessing')}</p></div>}
 
       <div className="incident-form">
         <div className="form-group">
@@ -135,22 +114,23 @@ function IncidentReportForm({ onSubmit, voiceTranscript }) {
             <option value="illegal">⚠️ {t('report.illegal')}</option>
             <option value="other">📌 {t('report.other')}</option>
           </select>
-          {errors.incidentType && <span className="error">{t('report.selectType')}</span>}
         </div>
 
         <div className="form-group">
           <label>{t('report.description')} *</label>
-          <textarea 
-            {...register('description', { required: true, minLength: 20 })}
-            placeholder={t('report.descriptionPlaceholder')}
-            rows="5"
-          />
-          {errors.description && <span className="error">{t('report.minDescription')}</span>}
+          <textarea {...register('description', { required: true, minLength: 20 })} rows="5" />
         </div>
         
         <div className="form-group">
           <label>{t('report.uploadPhoto')} *</label>
-          <input type="file" accept="image/*" onChange={handleImageChange} required />
+          <input type="file" accept="image/*" onChange={(e) => {
+             const file = e.target.files[0];
+             if (file) {
+               const reader = new FileReader();
+               reader.onloadend = () => setImagePreview(reader.result);
+               reader.readAsDataURL(file);
+             }
+          }} required />
           {imagePreview && <div className="image-preview"><img src={imagePreview} alt="Preview" /></div>}
         </div>
 
